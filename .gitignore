@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+outputs/*.docx
+outputs/*.md
+outputs/*.png
+outputs/*.log
+outputs/*.pid
+outputs/*.csv
+outputs/*.xlsx
+data/
