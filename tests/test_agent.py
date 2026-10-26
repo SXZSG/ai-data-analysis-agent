@@ -44,3 +44,22 @@ def test_agent_completes_classification_workflow_without_api_key(tmp_path, monke
     assert Path(result["report_paths"]["markdown"]).parent.parent == tmp_path
     assert len(result["tool_trace"]) >= 7
     assert all(item["status"] == "success" for item in result["tool_trace"])
+
+
+
+def test_agent_completes_regression_workflow_without_api_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "")
+    dataset = Path(__file__).resolve().parents[1] / "examples" / "sample_regression.csv"
+    agent = DataAnalysisAgent(output_dir=tmp_path)
+
+    result = agent.run(
+        dataset_path=dataset,
+        target_column="price",
+        user_goal="Inspect quality and compare baseline regression models.",
+    )
+
+    assert result["agent_mode"] == "deterministic_fallback"
+    assert result["task_detection"]["task_type"] == "regression"
+    assert len(result["evaluation"]["results"]) >= 2
+    assert {"MAE", "RMSE", "R2"} <= set(result["evaluation"]["results"][0]["metrics"])
+    assert Path(result["report_paths"]["markdown"]).exists()
