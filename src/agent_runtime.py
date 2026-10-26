@@ -10,34 +10,13 @@ MAX_TOOL_CALLS = 14
 MAX_OBSERVATION_CHARS = 7000
 
 _TOOL_DEFINITIONS = [
-    (
-        "inspect_dataset",
-        "Inspect the uploaded dataset schema, row count, column names, data types, missing counts, and unique counts. This tool never returns raw rows.",
-    ),
-    (
-        "profile_dataset",
-        "Build a statistical profile of columns, numeric summaries, and categorical value counts. Call this before interpreting data patterns.",
-    ),
-    (
-        "analyze_data_quality",
-        "Check missingness, duplicate rows, constant columns, high-missingness columns, and potential numeric IQR outliers. Outliers are warnings, not automatic deletion instructions.",
-    ),
-    (
-        "detect_task_type",
-        "Determine whether the selected target is a classification or regression target. The target column has already been selected by the user.",
-    ),
-    (
-        "train_baselines",
-        "Prepare features using a train-fitted preprocessing pipeline and train baseline models for the selected target. Requires detect_task_type to have succeeded.",
-    ),
-    (
-        "evaluate_models",
-        "Evaluate the trained baseline models on the held-out test split and return the measured metrics. Requires train_baselines to have succeeded.",
-    ),
-    (
-        "generate_visualizations",
-        "Generate data-quality, distribution, correlation, and target plots. Requires a valid target and task type.",
-    ),
+    ("inspect_dataset", "Inspect schema, row count, column names, types, missing counts, and unique counts. Never returns raw rows."),
+    ("profile_dataset", "Build column statistics, numeric summaries, and categorical value counts."),
+    ("analyze_data_quality", "Check missingness, duplicate rows, constant columns, high-missingness columns, and potential numeric IQR outliers. Never automatically deletes data."),
+    ("detect_task_type", "Determine whether the user-selected target should be treated as classification or regression."),
+    ("train_baselines", "Train baseline models using a preprocessing pipeline fitted only on the training split. Requires task detection."),
+    ("evaluate_models", "Evaluate trained baselines on the held-out test split. Requires training."),
+    ("generate_visualizations", "Generate dataset quality, distribution, correlation, and target plots."),
 ]
 
 AGENT_TOOLS = [
@@ -65,7 +44,7 @@ def run_tool_calling_loop(
     state: dict[str, Any],
     log_callback: Callable[[str], None] | None = None,
 ) -> str:
-    """Run a bounded, allowlisted function-calling loop and return the final assistant message."""
+    """Run a bounded allowlisted function-calling loop and return the final assistant message."""
     conversation = list(messages)
     completed_tools: set[str] = set()
     total_tool_calls = 0
@@ -75,7 +54,6 @@ def run_tool_calling_loop(
         response = llm_client.create_agent_completion(conversation, AGENT_TOOLS)
         message = response.choices[0].message
         tool_calls = getattr(message, "tool_calls", None) or []
-
         if not tool_calls:
             final_text = (message.content or "").strip()
             break
@@ -105,19 +83,16 @@ def run_tool_calling_loop(
             tool_name = call.function.name
             started = time.perf_counter()
             status = "error"
-
             try:
-                raw_arguments = call.function.arguments or "{}"
-                arguments = json.loads(raw_arguments)
+                arguments = json.loads(call.function.arguments or "{}")
                 if not isinstance(arguments, dict):
                     raise ValueError("Tool arguments must be a JSON object.")
                 if arguments:
                     raise ValueError("This tool accepts no arguments.")
                 if tool_name not in tool_handlers:
                     raise ValueError(f"Unknown tool: {tool_name}")
-
                 if tool_name in completed_tools:
-                    result = {"status": "already_completed", "message": "This tool already completed successfully."}
+                    result = {"status": "already_completed"}
                 else:
                     result = tool_handlers[tool_name]()
                     completed_tools.add(tool_name)
@@ -127,14 +102,13 @@ def run_tool_calling_loop(
                 payload = {
                     "ok": False,
                     "error": str(exc)[:500],
-                    "hint": "Check the prerequisite tools and retry only if the missing prerequisite can be completed.",
+                    "hint": "Check prerequisite tools, then retry only if the prerequisite can be completed.",
                 }
 
             elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
             observation = json.dumps(payload, ensure_ascii=False, default=str)
             if len(observation) > MAX_OBSERVATION_CHARS:
                 observation = observation[:MAX_OBSERVATION_CHARS] + " ... [observation truncated]"
-
             state.setdefault("tool_trace", []).append(
                 {
                     "tool_name": tool_name,
@@ -146,7 +120,6 @@ def run_tool_calling_loop(
             )
             if log_callback:
                 log_callback(f"Tool {tool_name}: {status} ({elapsed_ms} ms)")
-
             conversation.append(
                 {
                     "role": "tool",
