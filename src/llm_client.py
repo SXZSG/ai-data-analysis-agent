@@ -7,17 +7,42 @@ from src.prompts import SYSTEM_PROMPT, build_analysis_prompt
 class LLMClient:
     def __init__(self) -> None:
         self.config = get_config()
+        self._client = None
+
+    @property
+    def available(self) -> bool:
+        return bool(self.config.llm_api_key)
+
+    def _get_client(self) -> OpenAI:
+        if self._client is None:
+            if not self.config.llm_api_key:
+                raise RuntimeError("LLM_API_KEY is not configured.")
+            self._client = OpenAI(
+                api_key=self.config.llm_api_key,
+                base_url=self.config.llm_base_url,
+                timeout=45.0,
+                max_retries=1,
+            )
+        return self._client
+
+    def create_agent_completion(self, messages: list[dict], tools: list[dict]):
+        """Ask an OpenAI-compatible chat-completions endpoint to select allowlisted tools."""
+        if not self.available:
+            raise RuntimeError("LLM_API_KEY is not configured.")
+        return self._get_client().chat.completions.create(
+            model=self.config.llm_model,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            temperature=0.1,
+        )
 
     def generate_summary(self, context: dict) -> str:
-        if not self.config.llm_api_key:
+        if not self.available:
             return generate_rule_based_summary(context)
 
         try:
-            client = OpenAI(
-                api_key=self.config.llm_api_key,
-                base_url=self.config.llm_base_url,
-            )
-            response = client.chat.completions.create(
+            response = self._get_client().chat.completions.create(
                 model=self.config.llm_model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
@@ -27,9 +52,11 @@ class LLMClient:
             )
             content = response.choices[0].message.content
             return content.strip() if content else generate_rule_based_summary(context)
-        except Exception as exc:
-            fallback = generate_rule_based_summary(context)
-            return f"{fallback}\n\n> LLM generation failed, rule-based fallback was used. Error: {exc}"
+        except Exception:
+            return (
+                generate_rule_based_summary(context)
+                + "\n\n_LLM summary generation failed; a deterministic summary was used instead._"
+            )
 
 
 def generate_rule_based_summary(context: dict) -> str:
@@ -39,6 +66,7 @@ def generate_rule_based_summary(context: dict) -> str:
     evaluation = context.get("evaluation", {})
     target = context.get("target", {})
     correlations = context.get("correlations", [])
+    quality = context.get("data_quality", {})
 
     row_count = dataset.get("rows", 0)
     column_count = dataset.get("columns", 0)
@@ -50,38 +78,41 @@ def generate_rule_based_summary(context: dict) -> str:
     best_model = evaluation.get("best_model", {})
 
     lines = [
-        "## AI Summary",
+        "## Analysis Summary",
         "",
         f"- Dataset scale: {row_count} rows and {column_count} columns.",
         f"- Main fields: {', '.join(dataset.get('column_names', [])[:12])}.",
         f"- Task type: {task_detection.get('task_type', 'unknown')}.",
-        f"- Target column: `{target.get('name', 'unknown')}`.",
+        f"- Target column: {target.get('name', 'unknown')}.",
     ]
 
     if missing_columns:
-        lines.append(f"- Data quality issues: missing values were found in {', '.join(missing_columns[:10])}.")
+        lines.append(f"- Columns containing missing values: {', '.join(missing_columns[:10])}.")
     else:
-        lines.append("- Data quality issues: no missing values were detected.")
+        lines.append("- No missing values were detected.")
 
+    if quality:
+        lines.append(
+            f"- Quality diagnostics: {quality.get('duplicate_rows', 0)} duplicate rows; "
+            f"{len(quality.get('constant_columns', []))} constant columns; "
+            f"{len(quality.get('numeric_iqr_outlier_warnings', []))} numeric columns flagged for IQR outlier review."
+        )
     if target.get("distribution"):
-        lines.append(f"- Target distribution: {target['distribution']}.")
-
+        lines.append(f"- Target distribution/statistics: {target['distribution']}.")
     if correlations:
         formatted = ", ".join(
-            f"{item['feature']} ({item['correlation']:.3f})" for item in correlations[:5]
+            f"{item['feature']} (r={item['correlation']:.3f})" for item in correlations[:5]
         )
-        lines.append(f"- Important correlated features: {formatted}.")
-    else:
-        lines.append("- Important correlated features: no strong numeric correlations were available.")
-
+        lines.append(f"- Largest absolute numeric correlations with the regression target: {formatted}.")
     if best_model:
-        lines.append(f"- Best baseline model: {best_model.get('model_name')} with metrics {best_model.get('metrics')}.")
-
+        lines.append(
+            f"- Best baseline by held-out {evaluation.get('selection_metric', 'selection metric')}: "
+            f"{best_model.get('model_name')} with {best_model.get('metrics')}."
+        )
     lines.extend(
         [
-            "- Next steps: validate data definitions, add domain-specific feature engineering, tune model hyperparameters, and compare cross-validation results before production use.",
-            "",
-            "_This summary was generated with the rule-based fallback because no LLM API key was configured or the LLM request failed._",
+            "- Interpretation caution: correlations are not causal effects; hold-out metrics are a baseline, not a production guarantee.",
+            "- Suggested next steps: validate domain definitions, inspect flagged quality issues, establish a cross-validation baseline, and compare against a simple domain-appropriate reference model.",
         ]
     )
     return "\n".join(lines)
