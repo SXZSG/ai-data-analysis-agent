@@ -1,193 +1,118 @@
-# ai-data-analysis-agent
+# AI Data Analysis Agent
 
-一个面向真实数据分析和算法建模场景的 AI Data Analysis Agent。项目支持上传 CSV / Excel 数据集，自动完成数据读取、数据质量检查、可视化分析、机器学习 baseline 建模、模型评估和报告生成。
+A portfolio-ready data-analysis agent that accepts a natural-language goal and a CSV/XLSX file, selects from a bounded set of analysis tools, checks tool results, completes required deliverables deterministically, and exports an evidence-grounded report.
 
-它不是论文助手，也不是岗位匹配助手，而是一个可以在简历和 GitHub 中展示 Agent Workflow、Tool Calling、Python 数据分析、机器学习建模和 AI 报告生成能力的端到端项目。
+## What makes this an agent?
 
-## 项目背景
+This project is more than a fixed sequence of pandas and scikit-learn calls. When an OpenAI-compatible API is configured, an LLM selects allowlisted tools through function calling based on the user's goal. Tool calls are validated, bounded, recorded with status and duration, and returned to the model as observations. The application independently completes required analysis steps if the planner skips a step or the API is unavailable.
 
-很多数据分析项目的第一阶段都包含相似流程：读取数据、理解字段、检查缺失值、判断建模任务、构建 baseline、评估模型并输出分析报告。本项目把这些步骤封装成一个清晰的 Agent Workflow，让用户通过 Streamlit 页面上传数据并触发自动分析。
+Without an API key, the application remains usable through a deterministic tool plan.
 
-## 项目功能
+## Features
 
-- 支持上传 CSV / Excel 文件。
-- 支持用户选择目标列 target column。
-- 自动判断 classification / regression 任务。
-- 自动生成数据画像：字段类型、缺失率、唯一值数量、数值统计、类别 top values。
-- 自动清洗和编码：数值缺失值 median 填充，类别缺失值 mode 填充，数值特征 StandardScaler，类别特征 OneHotEncoder。
-- 自动生成可视化图片：缺失值、数值分布、相关性热力图、目标变量分布。
-- 自动训练 baseline 模型。
-- 自动评估模型并选择最佳 baseline。
-- 支持 OpenAI-compatible API 生成 AI Summary。
-- 未配置 API key 时自动回退到规则模板报告。
-- 导出 Markdown 报告，可选导出 Word 报告。
+- CSV and XLSX upload, schema preview, missing-cell and duplicate-row counts.
+- Natural-language analysis goal plus user-selected target column.
+- Tool-calling agent with a fixed allowlist, bounded turns/tool calls, argument validation, and execution trace.
+- Dataset profile: data types, missingness, unique counts, numeric summaries, and categorical frequencies.
+- Data-quality diagnostics: duplicate rows, constant columns, high missingness, and potential numeric IQR outliers. Findings are warnings; source rows are never silently deleted.
+- Classification/regression task detection and baseline model comparison.
+- Train-fitted preprocessing pipeline to avoid fitting imputation/scaling/encoding on the held-out test data.
+- Hold-out metrics, plots, rule-based fallback summary, optional LLM summary, Markdown report, and optional Word report.
+- Run-specific output directories to reduce artifact collisions between analysis runs.
+- GitHub Actions checks for tests and Python compilation.
 
-## Agent Workflow 流程图
+## Agent workflow
 
-```text
-User Upload Dataset
-        |
-        v
-Step 1: Load Dataset
-        |
-        v
-Step 2: Profile Data
-        |
-        v
-Step 3: Detect Task Type
-        |
-        v
-Step 4: Clean and Encode Data
-        |
-        v
-Step 5: Generate Visualizations
-        |
-        v
-Step 6: Train Baseline Models
-        |
-        v
-Step 7: Evaluate Models
-        |
-        v
-Step 8: Generate AI Summary
-        |
-        v
-Step 9: Export Report
-```
+1. Load and validate the uploaded dataset.
+2. Let the LLM select useful tools for the stated goal, if an API key is configured.
+3. Execute only registered tools; validate arguments and record outcomes.
+4. Ensure required deliverables exist using a deterministic completion policy.
+5. Summarize measured evidence and limitations.
+6. Export a Markdown report and, when available, a Word report.
 
-## 技术栈
+Available tools: \`inspect_dataset\`, \`profile_dataset\`, \`analyze_data_quality\`, \`detect_task_type\`, \`train_baselines\`, \`evaluate_models\`, and \`generate_visualizations\`.
 
-- Python
-- Streamlit
-- pandas / numpy
-- scikit-learn
-- matplotlib
-- openpyxl
-- python-docx
-- python-dotenv
-- OpenAI-compatible API
+## Tech stack
 
-## Quick Start
+Python, Streamlit, pandas, NumPy, scikit-learn, matplotlib, OpenAI-compatible Chat Completions function calling, pytest, GitHub Actions.
 
-```bash
+## Quick start
+
+\`\`\`bash
+python -m venv .venv
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+# macOS/Linux:
+# source .venv/bin/activate
+
 pip install -r requirements.txt
 streamlit run app.py
-```
+\`\`\`
 
-打开页面后：
+Upload either \`examples/sample_classification.csv\` (target: \`churn\`) or \`examples/sample_regression.csv\` (target: \`price\`), describe your goal, select the target, and click **Run Agent**.
 
-1. 上传 `examples/sample_classification.csv` 或 `examples/sample_regression.csv`。
-2. 选择目标列，例如 `churn` 或 `price`。
-3. 点击 `Run Agent`。
-4. 在页面查看执行日志、数据画像、模型结果、图表和报告。
+## Optional LLM configuration
 
-## 本地测试
+Copy \`.env.example\` to \`.env\` and fill in a provider's OpenAI-compatible settings:
 
-语法检查：
-
-```bash
-python -m py_compile app.py
-python -m py_compile src\config.py src\llm_client.py src\agent_orchestrator.py src\prompts.py src\utils.py
-python -m py_compile tools\data_loader.py tools\data_profiler.py tools\data_cleaner.py tools\visualizer.py tools\task_detector.py tools\model_trainer.py tools\model_evaluator.py tools\report_exporter.py
-```
-
-逻辑测试建议使用 `examples/` 下的两个虚构数据集分别验证 classification 和 regression 工作流，确认 `outputs/data_analysis_report.md` 与可视化图片可以生成。
-
-## .env 配置方法
-
-复制 `.env.example` 为 `.env`：
-
-```bash
-cp .env.example .env
-```
-
-填写 OpenAI-compatible API 配置：
-
-```env
+\`\`\`env
 LLM_API_KEY=your_api_key_here
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-4o-mini
-```
+\`\`\`
 
-如果不填写 `LLM_API_KEY`，项目不会报错，会使用规则模板生成基础报告。
+The default values are examples. Use a model/provider that supports Chat Completions tool calling. Never commit \`.env\` or expose API keys in screenshots.
 
-## Demo 数据说明
+## Tests
 
-- `examples/sample_classification.csv`：虚构客户流失数据，目标列为 `churn`。
-- `examples/sample_regression.csv`：虚构房价数据，目标列为 `price`。
+\`\`\`bash
+pip install -r requirements.txt pytest
+pytest -q
+python -m compileall -q app.py src tools tests
+\`\`\`
 
-示例数据均为虚构数据，不包含真实隐私信息。
+The integration test runs the classification workflow without an API key and verifies that a report and tool trace are produced.
 
-## 项目结构
+## Safety and limitations
 
-```text
+- The LLM can select only registered tools; this project does not execute arbitrary model-generated Python code.
+- Tool calls have bounded turns and total call count. Each tool accepts no arguments in this version.
+- Dataset values are treated as untrusted data, not instructions, when building prompts.
+- Uploaded datasets are processed locally by the app. If an LLM API is configured, the current summary/planning context sends column names, aggregate profile information, and selected-target metadata to that provider; raw dataset rows are not intentionally included in the planning prompt. Review your provider's data handling terms before using sensitive data.
+- Outlier flags use a simple IQR heuristic and require domain review. They do not imply data errors.
+- Automatic task detection is heuristic; users should verify the selected target and task type.
+- The models are baselines evaluated on one hold-out split, not a robust production model selection process. Cross-validation, leakage checks for time/grouped data, explainability, and hyperparameter search are future work.
+- LLM-generated text may be wrong. Reported metrics are sourced from programmatic evaluation; interpretations should be checked.
+- The agent does not currently support multi-file joins, SQL sources, arbitrary Python execution, or persistent multi-turn sessions.
+
+## Project structure
+
+\`\`\`text
 ai-data-analysis-agent/
 ├── app.py
-├── requirements.txt
-├── README.md
-├── .gitignore
-├── .env.example
 ├── src/
-│   ├── __init__.py
+│   ├── agent_orchestrator.py
+│   ├── agent_runtime.py
 │   ├── config.py
 │   ├── llm_client.py
-│   ├── agent_orchestrator.py
 │   ├── prompts.py
 │   └── utils.py
 ├── tools/
-│   ├── __init__.py
 │   ├── data_loader.py
 │   ├── data_profiler.py
+│   ├── data_quality.py
 │   ├── data_cleaner.py
-│   ├── visualizer.py
 │   ├── task_detector.py
 │   ├── model_trainer.py
 │   ├── model_evaluator.py
+│   ├── visualizer.py
 │   └── report_exporter.py
-├── examples/
-│   ├── sample_classification.csv
-│   └── sample_regression.csv
-├── outputs/
-│   └── .gitkeep
-└── assets/
-    └── .gitkeep
-```
+├── tests/
+└── examples/
+\`\`\`
 
-## 简历写法
+## Resume-ready description
 
-可以写成：
+> Built a tool-calling AI Data Analysis Agent using Python and Streamlit. Implemented an allowlisted function-calling runtime with bounded execution, prerequisite-aware analysis tools, execution traces, deterministic fallback, and run-specific artifacts. Automated dataset profiling and quality diagnostics, classification/regression baseline evaluation with train-fitted preprocessing, visualizations, and Markdown/Word reporting; added pytest integration coverage and GitHub Actions CI.
 
-> 构建 AI Data Analysis Agent，基于 Streamlit、pandas、scikit-learn 和 OpenAI-compatible API，实现 CSV / Excel 数据集的自动读取、数据画像、任务类型识别、特征预处理、baseline 建模、模型评估和 Markdown / Word 报告导出。项目采用 Agent Workflow + Tool Calling 结构，将数据加载、清洗、可视化、建模和报告生成拆分为独立工具模块，支持无 API key 时的规则模板回退。
-
-## 面试讲法
-
-面试时可以重点讲：
-
-- 为什么把流程设计成 Agent Workflow，而不是一个长函数。
-- 每个工具模块的输入输出边界，例如 data_loader、data_profiler、model_trainer。
-- 如何判断 classification / regression。
-- 如何使用 ColumnTransformer 统一处理数值和类别特征。
-- baseline 模型为什么选择 LogisticRegression、LinearRegression 和 RandomForest。
-- 无 LLM API key 时如何保证系统仍然可用。
-- 后续如何扩展为多轮分析 Agent，例如支持用户追问、自动特征工程和模型解释。
-
-## Limitations and Future Work
-
-- 当前只支持本地上传的 CSV / Excel 文件。
-- 当前 task detector 使用规则判断，复杂业务标签仍需要人工确认。
-- 当前建模只覆盖 baseline，不包含超参数搜索、交叉验证和模型解释。
-- 当前报告为静态报告，未来可扩展为交互式 HTML 报告。
-- 未来可以加入 SHAP、特征重要性解释、自动特征工程、异常值检测和多轮对话式分析。
-
-## 上传 GitHub
-
-```bash
-git init
-git add .
-git commit -m "Initial commit: AI data analysis agent"
-git branch -M main
-git remote add origin https://github.com/<your-username>/ai-data-analysis-agent.git
-git push -u origin main
-```
-
-上传前不要提交 `.env`、真实业务数据或 `outputs/` 下的运行产物。
+Only claim tool-calling mode when tested with a configured compatible API. Record real test results before adding quantitative performance claims to a resume.
