@@ -9,9 +9,9 @@ from tools.data_quality import analyze_data_quality
 def test_quality_diagnostics_do_not_mutate_dataframe():
     frame = pd.DataFrame(
         {
-            "value": [1.0, 2.0, 3.0, 4.0, 100.0, 100.0],
-            "mostly_missing": [None, None, None, 1.0, None, None],
-            "constant": ["x"] * 6,
+            "value": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 100.0, 7.0],
+            "mostly_missing": [None, None, None, 1.0, None, None, None, None, None],
+            "constant": ["x"] * 9,
         }
     )
     original = frame.copy(deep=True)
