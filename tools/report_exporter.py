@@ -54,6 +54,22 @@ def export_markdown_report(context: dict, output_dir: Path) -> Path:
             ]
         )
 
+    quality = context.get("data_quality", {})
+    if quality:
+        lines.extend(
+            [
+                "## Data Quality Diagnostics",
+                "",
+                f"- Duplicate rows: {quality.get('duplicate_rows', 0)}",
+                f"- Constant columns: {', '.join(quality.get('constant_columns', [])) or 'None'}",
+                f"- High-missingness columns: {', '.join(item.get('column', '') for item in quality.get('high_missing_columns', [])) or 'None'}",
+                f"- Numeric columns flagged for IQR outlier review: {', '.join(item.get('column', '') for item in quality.get('numeric_iqr_outlier_warnings', [])) or 'None'}",
+                "",
+                quality.get("policy", "Quality diagnostics only; review findings before changing data."),
+                "",
+            ]
+        )
+
     lines.extend(
         [
             "## Model Evaluation",
@@ -93,6 +109,23 @@ def export_word_report(context: dict, output_dir: Path) -> Path | None:
     document.add_paragraph(f"Columns: {context['dataset']['columns']}")
     document.add_paragraph(f"Target: {context['target']['name']}")
     document.add_paragraph(f"Task Type: {context['task_detection']['task_type']}")
+
+    quality = context.get("data_quality", {})
+    if quality:
+        document.add_heading("Data Quality Diagnostics", level=2)
+        document.add_paragraph(f"Duplicate rows: {quality.get('duplicate_rows', 0)}")
+        document.add_paragraph(
+            "Constant columns: " + (", ".join(quality.get("constant_columns", [])) or "None")
+        )
+        document.add_paragraph(
+            "High-missingness columns: "
+            + (", ".join(item.get("column", "") for item in quality.get("high_missing_columns", [])) or "None")
+        )
+        document.add_paragraph(
+            "Numeric columns flagged for IQR outlier review: "
+            + (", ".join(item.get("column", "") for item in quality.get("numeric_iqr_outlier_warnings", [])) or "None")
+        )
+        document.add_paragraph(quality.get("policy", "Quality diagnostics only; review findings before changing data."))
 
     document.add_heading("Model Evaluation", level=2)
     for item in context["evaluation"]["results"]:
