@@ -271,7 +271,7 @@ class DataAnalysisAgent:
         return to_serializable(
             {
                 "dataset": {
-                    "source": state["load_result"].source_name,
+                    "source": Path(state["dataset_path"]).name,
                     "rows": dataframe.shape[0],
                     "columns": dataframe.shape[1],
                     "column_names": [str(column) for column in dataframe.columns],
