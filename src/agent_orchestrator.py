@@ -159,21 +159,32 @@ class DataAnalysisAgent:
 
     def _record_tool(self, state: dict, name: str, result: dict) -> dict:
         state.setdefault("tool_success", {})[name] = True
-        if not any(item["tool_name"] == name and item["source"] == "fallback" for item in state["tool_trace"]):
-            state["tool_trace"].append(
-                {
-                    "tool_name": name,
-                    "status": "success",
-                    "duration_ms": None,
-                    "source": "fallback",
-                    "observation": "Completed by deterministic completion policy.",
-                }
-            )
         return result
 
     def _execute_fallback_tool(self, name: str, handler: Callable[[dict], dict], state: dict, callback: LogCallback) -> None:
         self._log(state, f"Deterministic completion: {name}", callback)
-        handler(state)
+        started = datetime.now(timezone.utc)
+        try:
+            handler(state)
+            status = "success"
+            observation = "Completed by deterministic completion policy."
+        except Exception as exc:
+            status = "error"
+            observation = f"{type(exc).__name__}: {str(exc)[:400]}"
+            state.setdefault("tool_success", {})[name] = False
+            self._log(state, f"Required tool {name} failed: {type(exc).__name__}.", callback)
+            raise
+        finally:
+            elapsed_ms = round((datetime.now(timezone.utc) - started).total_seconds() * 1000, 1)
+        state["tool_trace"].append(
+            {
+                "tool_name": name,
+                "status": status,
+                "duration_ms": elapsed_ms,
+                "source": "fallback",
+                "observation": observation,
+            }
+        )
 
     def _tool_inspect(self, state: dict) -> dict:
         df = state["dataframe"]
