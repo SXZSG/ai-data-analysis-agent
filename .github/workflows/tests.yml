@@ -22,6 +22,7 @@ jobs:
       - name: Run tests
         env:
           LLM_API_KEY: ""
+          PYTHONPATH: .
         run: pytest -q
       - name: Compile Python modules
         run: python -m compileall -q app.py src tools tests
